@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GeoManager SP - V6 (Multi & View)</title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <style>
+        /* ================= ESTILOS ================= */
+        :root {
+            --bg-color: #1a1a1d; --sidebar-bg: #212125; --card-bg: #2b2b30;
+            --text-color: #e0e0e0; --text-muted: #a0a0a0; --border-color: #444;
+            --item-bg: #3a3a45; --item-hover: #4a4a55; --btn-bg: #4361ee;
+            --btn-danger: #ef233c; --badge-bg: #e63946;
+        }
+        body.light-theme {
+            --bg-color: #f0f2f5; --sidebar-bg: #ffffff; --card-bg: #ffffff;
+            --text-color: #333333; --text-muted: #666666; --border-color: #d1d5db;
+            --item-bg: #e9ecef; --item-hover: #dee2e6; --btn-bg: #28a745;
+            --btn-danger: #dc3545; --badge-bg: #dc3545;
+        }
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background: var(--bg-color); color: var(--text-color); height: 100vh; display: flex; flex-direction: column; overflow: hidden; transition: background 0.3s; }
+        
+        /* HEADER */
+        header { background: var(--sidebar-bg); padding: 0 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); height: 50px; flex-shrink: 0; gap: 15px; transition: 0.3s; }
+        .header-left { display: flex; align-items: center; gap: 15px; }
+        h1 { font-size: 1.1rem; color: #4cc9f0; margin: 0; }
+        .stats-header { font-size: 0.8rem; color: var(--text-muted); }
+        .header-controls { display: flex; gap: 10px; align-items: center; }
+        
+        button { background: transparent; border: 1px solid var(--text-color); color: var(--text-color); padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: 0.2s; }
+        button:hover { background: rgba(255,255,255,0.1); }
+        button.reset-btn { border-color: var(--btn-danger); color: var(--btn-danger); }
+        button.reset-btn:hover { background: var(--btn-danger); color: white; }
+        button.sync-btn { border-color: #4cc9f0; color: #4cc9f0; } 
+        button.sync-btn:hover { background: #4cc9f0; color: #000; }
+        button.view-btn { border-color: #fca311; color: #fca311; font-weight: bold; }
+        button.view-btn:hover { background: #fca311; color: #000; }
+
+        .file-upload-label { background: var(--item-bg); color: var(--text-color); padding: 4px 10px; border-radius: 4px; border: 1px dashed var(--border-color); font-size: 0.8rem; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+        #excelInput { display: none; }
+
+        /* LAYOUT PRINCIPAL */
+        #app-container { display: flex; flex: 1; height: calc(100vh - 50px); overflow: hidden; position: relative; }
+        
+        /* SIDEBAR */
+        #sidebar { width: 280px; background: var(--sidebar-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 10px; flex-shrink: 0; transition: transform 0.3s ease; }
+        #sidebar.drag-over { background: rgba(255,255,255,0.05); border: 2px dashed var(--text-muted); }
+        #search-box { padding: 8px; margin-bottom: 10px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--bg-color); color: var(--text-color); width: 93%; }
+        #lista-tecnicos { list-style: none; padding: 0; margin: 0; overflow-y: auto; flex: 1; min-height: 100px; }
+        
+        .tecnico-item { padding: 8px; margin-bottom: 6px; background: var(--item-bg); border-radius: 4px; cursor: grab; font-size: 0.85rem; user-select: none; border-left: 3px solid transparent; }
+        .tecnico-item:hover { background: var(--item-hover); }
+        .tecnico-item.dragging { opacity: 0.5; }
+
+        /* MAIN CONTENT */
+        #main-content { flex: 1; display: flex; flex-direction: column; padding: 10px; gap: 10px; overflow-y: auto; transition: 0.3s; }
+        
+        #map { width: 100%; height: 40vh; border-radius: 6px; border: 1px solid var(--border-color); flex-shrink: 0; transition: height 0.5s ease; }
+        
+        #zonas-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; padding-bottom: 10px; }
+        
+        .zona-drop { background: var(--card-bg); border: 1px dashed var(--border-color); border-radius: 6px; padding: 8px; min-height: 100px; display: flex; flex-direction: column; transition: 0.2s; }
+        .zona-drop:hover { box-shadow: 0 4px 6px rgba(0,0,0,0.2); border-style: solid; }
+        .zona-titulo { text-align: center; font-weight: bold; font-size: 0.8rem; margin-bottom: 4px; border-bottom: 1px solid var(--border-color); cursor: pointer; display: flex; justify-content: center; gap: 5px; }
+        .count-badge { background: var(--text-color); color: var(--bg-color); font-size: 0.75rem; padding: 2px 6px; border-radius: 12px; font-weight: bold; display: none; }
+        .zona-desc { font-size: 0.65rem; color: var(--text-muted); text-align: center; margin-bottom: 5px; }
+        .zona-drop.drag-over { background: rgba(255,255,255,0.05); border-color: #fff !important; }
+        .zona-drop .tecnico-item { font-size: 0.75rem; background: rgba(67,97,238,0.15); border: 1px solid rgba(67,97,238,0.5); }
+        
+        /* AÇÔES (WhatsApp) */
+        #action-area { margin-top: auto; background: var(--card-bg); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); transition: 0.3s; }
+        .btn-gerar { background: var(--btn-bg); color: white; border: none; padding: 10px; width: 100%; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        textarea#output { width: 98%; height: 60px; margin-top: 10px; background: var(--bg-color); color: var(--text-color); border: 1px solid var(--border-color); font-family: monospace; }
+        
+        /* LEAFLET POPUP */
+        .leaflet-popup-content { font-family: 'Segoe UI', sans-serif; font-size: 0.85rem; }
+        .popup-header { font-weight: 800; font-size: 1rem; border-bottom: 2px solid #eee; }
+        .popup-stats { background: #fee2e2; color: #b91c1c; padding: 6px; border-radius: 6px; font-weight: bold; text-align: center; margin: 8px 0; border: 1px solid #fecaca; }
+        .popup-team-title { font-weight: bold; color: #333; font-size: 0.8rem; }
+        .popup-tech-item { font-size: 0.85rem; color: #2563eb; font-weight: 600; display: block; padding: 2px 0; border-bottom: 1px dotted #eee; }
+
+        /* LOADING */
+        #loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 9999; display: flex; justify-content: center; align-items: center; color: white; font-size: 1.5rem; display: none; }
+
+        /* ================= MODO APRESENTAÇÃO (ESTÉTICO) ================= */
+        body.view-mode #sidebar { display: none; } /* Oculta Sidebar */
+        body.view-mode #action-area { display: none; } /* Oculta Área de Ação */
+        body.view-mode .header-controls > *:not(#btn-exit-view) { display: none; } /* Oculta botões, menos Sair */
+        
+        body.view-mode #map { height: 55vh; border-bottom: 2px solid var(--btn-bg); } /* Mapa maior */
+        body.view-mode #zonas-container { gap: 12px; padding: 15px; } /* Espaçamento melhor */
+        
+        /* Botão Sair do modo */
+        #btn-exit-view { display: none; border-color: #ef233c; color: #ef233c; font-weight: bold; }
+        body.view-mode #btn-exit-view { display: inline-block; }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay">☁️ Sincronizando...</div>
+
+    <header>
+        <div class="header-left">
+            <h1>📍 GeoManager SP</h1>
+            <span id="stats-processamento" class="stats-header"></span>
+        </div>
+        <div class="header-controls">
+            <button id="btn-view" class="view-btn" onclick="toggleViewMode()" title="Modo Apresentação (Tela Cheia)">📺 Modo TV</button>
+            <button id="btn-exit-view" onclick="toggleViewMode()">❌ Sair do Modo TV</button>
+            
+            <button class="sync-btn" onclick="carregarDaNuvem()" title="Forçar atualização">🔄 Sync</button>
+            <button class="reset-btn" onclick="resetarTudo()" title="Limpar tudo">🗑️ Reset</button>
+            <label for="excelInput" class="file-upload-label">📁 Planilha</label>
+            <input type="file" id="excelInput" accept=".xlsx, .csv" onchange="lerPlanilha(this)">
+            <button class="theme-btn" onclick="toggleTheme()">Tema</button>
+        </div>
+    </header>
+
+    <div id="app-container">
+        <aside id="sidebar" ondrop="drop(event)" ondragover="allowDrop(event)">
+            <input type="text" id="search-box" placeholder="Buscar técnico..." onkeyup="filtrarTecnicos()">
+            <ul id="lista-tecnicos"></ul>
+            <div style="margin-top:auto; font-size:0.7rem; color:#666; text-align:center; padding:5px;">
+                🗑️ Arraste de volta aqui para remover da zona
+            </div>
+        </aside>
+
+        <main id="main-content">
+            <div id="map"></div>
+            <div id="zonas-container"></div>
+            <div id="action-area">
+                <button class="btn-gerar" onclick="gerarListaWhatsApp()">📲 Copiar Lista WhatsApp</button>
+                <textarea id="output" readonly placeholder="Resultado aqui..."></textarea>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // ================= CONFIGURAÇÃO DO JSONBIN =================
+        const JSONBIN_API_KEY = "$2a$10$IF3jTk9I2JHxFo4LgRHfge72Q4HLwAIXczbo1WTYs/3OiMxVnOgnS";
+        const JSONBIN_BIN_ID = "693b75e643b1c97be9e81770"; 
+        // ===========================================================
+
+        const tecnicosBase = [
+            "Adriano de Souza Paula", "Alexandre Marcos Henriques Gomes", "Antonio José Pereira","Daniel Ribeiro Nolasco de Oliveira", "Diego Firmino Cardoso dos Santos",
+            "Diogo Henrique Bitencourt de Almeida", "Dirceu de Oliveira Junior", "Edgar Ferreira Munhoz", "Elton Augusto da Paixão", "Fernando de Oliveira",
+            "Guilherme Henrique Gonelo Andrade", "Gustavo Candido Vianna", "Josean Silva Nascimento",
+            "Josimar Antonio Loiola", "Josimar Gonzaga da Silva", "Luciano Pamponet do Carmo",
+            "Malco Miquelini", "Marcio Felix de Lirio", "Marcos Eduardo dos Santos Viana",
+            "Othavio Guilherme Aguiar", "Paulo André Cardoso de Andrade", "Renato Gomes Gonçalves",
+            "Robson Covochich Zaic Pereira dos Santos", "Rodrigo Ventura da Silva", "Vinicius Eduardo Seabra Okasaki"
+        ];
+
+        const zonasConfig = [
+            { id: "centro_se", nome: "CENTRO (Sé)", color: "#ef233c", lat: -23.5505, lng: -46.6333, desc: "Sé, República" },
+            { id: "centro_1", nome: "CENTRO 1", color: "#d90429", lat: -23.528, lng: -46.645, desc: "Bom Retiro, Barra Funda" },
+            { id: "centro_2", nome: "CENTRO 2", color: "#b21e35", lat: -23.538, lng: -46.655, desc: "Higienópolis, Pacaembú" },
+            { id: "centro_3", nome: "CENTRO 3", color: "#d00000", lat: -23.565, lng: -46.635, desc: "Liberdade, Aclimação" },
+            { id: "paulista", nome: "PAULISTA", color: "#ff5400", lat: -23.566, lng: -46.665, desc: "Jardins, Cerqueira César" },
+            { id: "norte_1", nome: "ZONA NORTE 1", color: "#48cae4", lat: -23.500, lng: -46.625, desc: "Santana, Vl Guilherme" },
+            { id: "norte_2", nome: "ZONA NORTE 2", color: "#0096c7", lat: -23.460, lng: -46.640, desc: "Tucuruvi, Jaçanã" },
+            { id: "leste_1", nome: "ZONA LESTE 1", color: "#b5179e", lat: -23.555, lng: -46.590, desc: "Mooca, Brás" },
+            { id: "leste_2", nome: "ZONA LESTE 2", color: "#7209b7", lat: -23.540, lng: -46.560, desc: "Tatuapé, Carrão" },
+            { id: "leste_3", nome: "ZONA LESTE 3", color: "#9d4edd", lat: -23.580, lng: -46.500, desc: "São Mateus, Ermelino" },
+            { id: "leste_extremo", nome: "LESTE EXTREMO", color: "#c77dff", lat: -23.510, lng: -46.450, desc: "Itaquera, Guaianazes" },
+            { id: "sul_1", nome: "ZONA SUL 1", color: "#80ed99", lat: -23.590, lng: -46.630, desc: "Vl Mariana, Ipiranga" },
+            { id: "itaim", nome: "ITAIM (Sul)", color: "#57cc99", lat: -23.585, lng: -46.680, desc: "Itaim, Vl Olímpia" },
+            { id: "sto_amaro", nome: "SANTO AMARO", color: "#38a3a5", lat: -23.630, lng: -46.700, desc: "Sto Amaro, Cpo Belo" },
+            { id: "sul_2", nome: "ZONA SUL 2", color: "#22577a", lat: -23.670, lng: -46.670, desc: "Jabaquara, Cid Dutra" },
+            { id: "sul_3", nome: "ZONA SUL 3", color: "#40916c", lat: -23.690, lng: -46.720, desc: "Guarapiranga" },
+            { id: "sul_4", nome: "SUL 4 (Morumbi)", color: "#adb5bd", lat: -23.610, lng: -46.730, desc: "Morumbi, Cpo Limpo" },
+            { id: "oeste_1", nome: "ZONA OESTE 1", color: "#ffb703", lat: -23.530, lng: -46.690, desc: "Lapa, Pinheiros" },
+            { id: "oeste_2", nome: "ZONA OESTE 2", color: "#fb8500", lat: -23.570, lng: -46.750, desc: "Butantã, Jaguaré" },
+            { id: "guarulhos", nome: "GUARULHOS", color: "#adb5bd", lat: -23.462, lng: -46.533, desc: "Município" },
+            { id: "abcd", nome: "ABCD", color: "#ced4da", lat: -23.660, lng: -46.540, desc: "Sto André, SBC" },
+            { id: "osasco", nome: "OSASCO", color: "#e9c46a", lat: -23.532, lng: -46.792, desc: "Município" },
+            { id: "barueri", nome: "BARUERI", color: "#f4a261", lat: -23.511, lng: -46.876, desc: "Alphaville" }
+        ];
+
+        let mapObj, mapCircles = {}, dadosChamados = {};
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderizarEstruturaInicial();
+            initMap();
+            if(JSONBIN_API_KEY && JSONBIN_BIN_ID) carregarDaNuvem();
+        });
+
+        function renderizarEstruturaInicial() {
+            zonasConfig.forEach(z => dadosChamados[z.id] = 0);
+            renderizarListaTecnicos(tecnicosBase); // Preenche a lista lateral
+            renderizarZonas();
+        }
+
+        // ================= SINCRONIZAÇÃO NUVEM =================
+        async function salvarEstado() {
+            const alocacao = {};
+            zonasConfig.forEach(z => {
+                const zonaEl = document.getElementById(`zone_${z.id}`);
+                const techs = zonaEl.querySelectorAll('.tecnico-item');
+                // Salva o texto (nome) do técnico
+                const nomes = Array.from(techs).map(t => t.innerText);
+                if(nomes.length > 0) alocacao[z.id] = nomes;
+            });
+            
+            const estado = { alocacao: alocacao, chamados: dadosChamados, timestamp: new Date().getTime() };
+
+            localStorage.setItem('geoManagerSP_data', JSON.stringify(estado));
+
+            if(JSONBIN_API_KEY && JSONBIN_BIN_ID) {
+                mostrarLoading(true);
+                try {
+                    await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json', 'X-Master-Key': JSONBIN_API_KEY },
+                        body: JSON.stringify(estado)
+                    });
+                } catch(e) { console.error(e); } finally { mostrarLoading(false); }
+            }
+        }
+
+        async function carregarDaNuvem() {
+            if(!JSONBIN_API_KEY || !JSONBIN_BIN_ID) return;
+            mostrarLoading(true);
+            try {
+                const req = await fetch(`https://api.jsonbin.io/v3/b/${JSONBIN_BIN_ID}/latest`, {
+                    headers: { 'X-Master-Key': JSONBIN_API_KEY }
+                });
+                const res = await req.json();
+                if(res.record && res.record.status !== "ativo") aplicarEstado(res.record);
+            } catch(e) { carregarDoLocalStorage(); } finally { mostrarLoading(false); }
+        }
+
+        function carregarDoLocalStorage() {
+            const salvo = localStorage.getItem('geoManagerSP_data');
+            if(salvo) aplicarEstado(JSON.parse(salvo));
+        }
+
+        function aplicarEstado(estado) {
+            if(!estado || !estado.alocacao) return;
+            dadosChamados = estado.chamados || {};
+
+            // IMPORTANTE: NÃO limpamos a sidebar. Ela deve ficar cheia sempre.
+            
+            // Limpa apenas as zonas
+            zonasConfig.forEach(z => {
+                const zonaEl = document.getElementById(`zone_${z.id}`);
+                zonaEl.querySelectorAll('.tecnico-item').forEach(e => e.remove());
+            });
+
+            // Preenche as zonas com base no save (Clonando nomes)
+            for (const [zonaId, nomes] of Object.entries(estado.alocacao)) {
+                const zonaEl = document.getElementById(`zone_${zonaId}`);
+                if(zonaEl && Array.isArray(nomes)) {
+                    nomes.forEach(nome => {
+                        // Cria uma NOVA instância do técnico para a zona
+                        const li = criarElementoTecnico(nome, false); 
+                        zonaEl.appendChild(li);
+                    });
+                }
+            }
+            atualizarVisual();
+        }
+
+        function mostrarLoading(show) { document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none'; }
+
+        // ================= INTERFACE & MODO TV =================
+        function toggleViewMode() {
+            document.body.classList.toggle('view-mode');
+            // Força redraw do mapa
+            setTimeout(() => { mapObj.invalidateSize(); }, 300);
+        }
+
+        function atualizarVisual() {
+            zonasConfig.forEach(z => {
+                const id = z.id;
+                const qtd = dadosChamados[id] || 0;
+                const zonaDiv = document.getElementById(`zone_${id}`);
+                const tecs = zonaDiv.querySelectorAll('.tecnico-item');
+                let nomes = []; tecs.forEach(t => nomes.push(t.innerText));
+
+                const badge = zonaDiv.querySelector('.count-badge');
+                if (badge) { badge.innerText = qtd; badge.style.display = qtd > 0 ? 'inline-block' : 'none'; }
+
+                let popupHTML = `<div class="popup-header">${z.nome}</div><div class="popup-desc">${z.desc}</div>`;
+                if (qtd > 0) popupHTML += `<div class="popup-stats">🚨 ${qtd} Chamados Abertos</div>`;
+                
+                if (nomes.length > 0) {
+                    popupHTML += `<div class="popup-team"><span class="popup-team-title">Equipe:</span>`;
+                    nomes.forEach(n => popupHTML += `<span class="popup-tech-item">👷 ${n}</span>`);
+                    popupHTML += `</div>`;
+                } else {
+                    popupHTML += `<div style="margin-top:8px; font-style:italic; color:#999; font-size:0.75rem;">Nenhum técnico</div>`;
+                }
+
+                if (mapCircles[id]) {
+                    mapCircles[id].setPopupContent(popupHTML);
+                    if (qtd > 0) mapCircles[id].setStyle({ fillOpacity: 0.8, weight: 3, color: '#fff' });
+                    else if (nomes.length > 0) mapCircles[id].setStyle({ fillOpacity: 0.6, weight: 2, color: z.color });
+                    else mapCircles[id].setStyle({ fillOpacity: 0.4, weight: 1, color: z.color });
+                }
+            });
+        }
+        function atualizarTodaInterface() { atualizarVisual(); salvarEstado(); }
+
+        function resetarTudo() {
+            if(confirm("ATENÇÃO: Limpar alocações de TODOS os usuários?")) {
+                localStorage.removeItem('geoManagerSP_data');
+                dadosChamados = {};
+                // Limpa zonas visualmente
+                document.querySelectorAll('.zona-drop .tecnico-item').forEach(el => el.remove());
+                atualizarTodaInterface();
+            }
+        }
+
+        // ================= DRAG & DROP MULTIPLO =================
+        function criarElementoTecnico(nome, isSidebar = false) {
+            const li = document.createElement('li');
+            li.className = 'tecnico-item'; 
+            li.draggable = true; 
+            li.innerText = nome;
+            // Gera ID aleatório para permitir múltiplas cópias do mesmo técnico
+            li.id = `tec_${Math.random().toString(36).substr(2, 9)}`; 
+            
+            // Atributo de dados para identificar quem é quem
+            li.dataset.nome = nome;
+            
+            li.ondragstart = drag;
+            return li;
+        }
+
+        function renderizarListaTecnicos(lista) {
+            const el = document.getElementById('lista-tecnicos'); el.innerHTML = '';
+            lista.forEach(n => el.appendChild(criarElementoTecnico(n, true)));
+        }
+
+        function renderizarZonas() {
+            const c = document.getElementById('zonas-container'); c.innerHTML = '';
+            zonasConfig.forEach(z => {
+                const d = document.createElement('div'); d.className = 'zona-drop'; d.id = `zone_${z.id}`; d.style.borderTop = `3px solid ${z.color}`;
+                d.innerHTML = `<div class="zona-titulo" style="color:${z.color}" onclick="focarNoMapa(${z.lat}, ${z.lng}, '${z.id}')">${z.nome} <span class="count-badge">0</span></div><div class="zona-desc">${z.desc}</div>`;
+                d.ondrop = drop; d.ondragover = allowDrop; d.ondragleave = leaveDrop; c.appendChild(d);
+            });
+        }
+
+        function allowDrop(ev) { ev.preventDefault(); ev.currentTarget.classList.add('drag-over'); }
+        function leaveDrop(ev) { ev.currentTarget.classList.remove('drag-over'); }
+        
+        function drag(ev) { 
+            // Guarda o ID do elemento e o Nome
+            ev.dataTransfer.setData("text/id", ev.target.id);
+            ev.dataTransfer.setData("text/nome", ev.target.dataset.nome);
+            
+            // Identifica de onde veio (Sidebar ou Zona)
+            const parentId = ev.target.parentElement.id;
+            const source = (parentId === 'lista-tecnicos' || parentId === 'sidebar') ? 'sidebar' : 'zone';
+            ev.dataTransfer.setData("text/source", source);
+            
+            ev.target.classList.add('dragging'); 
+        }
+
+        function drop(ev) {
+            ev.preventDefault();
+            const draggedId = ev.dataTransfer.getData("text/id");
+            const nome = ev.dataTransfer.getData("text/nome");
+            const source = ev.dataTransfer.getData("text/source");
+            
+            const originalEl = document.getElementById(draggedId);
+            const target = ev.target.closest('.zona-drop') || ev.target.closest('#sidebar');
+
+            if (originalEl) originalEl.classList.remove('dragging');
+            document.querySelectorAll('.drag-over').forEach(e => e.classList.remove('drag-over'));
+
+            if (!target) return;
+
+            // 1. Soltou na SIDEBAR (Lixeira para quem vem da zona)
+            if (target.id === 'sidebar' || target.id === 'lista-tecnicos') {
+                if (source === 'zone') {
+                    // Se veio da zona, removemos (deletar alocação)
+                    originalEl.remove();
+                    atualizarTodaInterface();
+                }
+                // Se veio da sidebar, não faz nada (já está lá)
+                return;
+            }
+
+            // 2. Soltou numa ZONA
+            if (target.classList.contains('zona-drop')) {
+                // Verificar duplicata NA MESMA zona (opcional, mas bom pra evitar 2 Joãos na Sé)
+                const jaTemNaZona = Array.from(target.querySelectorAll('.tecnico-item')).some(t => t.innerText === nome);
+                if (jaTemNaZona) return; // Já está nesta zona
+
+                if (source === 'sidebar') {
+                    // Se veio da sidebar, CLONAMOS (cria nova instância)
+                    const novoElemento = criarElementoTecnico(nome, false);
+                    target.appendChild(novoElemento);
+                } else {
+                    // Se veio de outra zona, MOVEMOS
+                    target.appendChild(originalEl);
+                }
+                atualizarTodaInterface();
+            }
+        }
+
+        // ================= EXCEL E MAPA (Mantidos) =================
+        function initMap() {
+            mapObj = L.map('map').setView([-23.5505, -46.6333], 10);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(mapObj);
+            zonasConfig.forEach(z => {
+                mapCircles[z.id] = L.circle([z.lat, z.lng], { color: z.color, fillColor: z.color, fillOpacity: 0.4, weight: 1, radius: 2000 }).addTo(mapObj).bindPopup(`<b>${z.nome}</b>`);
+            });
+        }
+        function focarNoMapa(lat, lng, id) { mapObj.flyTo([lat, lng], 13, { duration: 1.5 }); if(mapCircles[id]) mapCircles[id].openPopup(); }
+        function filtrarTecnicos() {
+            const term = document.getElementById('search-box').value.toLowerCase();
+            document.querySelectorAll('#lista-tecnicos .tecnico-item').forEach(i => i.style.display = i.innerText.toLowerCase().includes(term) ? 'block' : 'none');
+        }
+        function toggleTheme() { document.body.classList.toggle('light-theme'); }
+
+        // Processamento Excel
+        function cleanStr(s) { return s ? s.toString().toUpperCase().trim() : ""; }
+        function findCol(row, list) { const k = Object.keys(row); return k.find(key => list.includes(key.trim().toUpperCase())); }
+        function mapearZonaExcel(n) {
+            n = cleanStr(n);
+            if (n.includes("NORTE - 1")) return "norte_1"; if (n.includes("NORTE - 2")) return "norte_2";
+            if (n.includes("LESTE - 1")) return "leste_1"; if (n.includes("LESTE - 2")) return "leste_2"; if (n.includes("LESTE - 3")) return "leste_3"; if (n.includes("LESTE EXTREMO")) return "leste_extremo";
+            if (n.includes("SUL - 1") || n.includes("VILA MARIANA")) return "sul_1"; if (n.includes("SUL - 2")) return "sul_2"; if (n.includes("SUL - 3")) return "sul_3"; if (n.includes("SUL - 4") || n.includes("MORUMBI")) return "sul_4";
+            if (n.includes("SANTO AMARO") || n.includes("MOEMA")) return "sto_amaro"; if (n.includes("ITAIM") || n.includes("VILA OLÍMPIA")) return "itaim";
+            if (n.includes("CENTRO - 1")) return "centro_1"; if (n.includes("CENTRO - 2")) return "centro_2"; if (n.includes("CENTRO - 3")) return "centro_3"; if (n.includes("CENTRO (SÉ)")) return "centro_se";
+            if (n.includes("PAULISTA")) return "paulista"; if (n.includes("OESTE - 1")) return "oeste_1"; if (n.includes("OESTE - 2")) return "oeste_2";
+            if (n.includes("GUARULHOS")) return "guarulhos"; if (n.includes("ABC")) return "abcd"; if (n.includes("OSASCO")) return "osasco"; if (n.includes("BARUERI")) return "barueri";
+            return null;
+        }
+        function lerPlanilha(input) {
+            const file = input.files[0]; if(!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { defval: "" });
+                processarChamados(json);
+            };
+            reader.readAsArrayBuffer(file);
+        }
+        function processarChamados(dados) {
+            zonasConfig.forEach(z => dadosChamados[z.id] = 0);
+            if(dados.length === 0) return alert("Vazio!");
+            const sample = dados[0];
+            const colArea = findCol(sample, ["ÁREA DE TRABALHO", "AREA DE TRABALHO", "AREA", "ZONA"]);
+            const colFim = findCol(sample, ["DATA DE FECHAMENTO", "DT FECHAMENTO", "DATA FECHAMENTO", "ENCERRAMENTO"]);
+            if(!colArea) return alert("Coluna 'Área' não encontrada.");
+            let abertos = 0;
+            dados.forEach(row => {
+                if(colFim && row[colFim]) return;
+                const z = mapearZonaExcel(row[colArea]);
+                if(z) { dadosChamados[z]++; abertos++; }
+            });
+            atualizarTodaInterface();
+            document.getElementById('stats-processamento').innerHTML = `(Abertos: ${abertos})`;
+            alert(`Sucesso! ${abertos} chamados abertos mapeados.`);
+        }
+
+        function gerarListaWhatsApp() {
+            const hoje = new Date().toLocaleDateString('pt-BR');
+            let t = `🗓️ *ESCALA TÉCNICA SP - ${hoje}*\n\n`, count = 0;
+            zonasConfig.forEach(z => {
+                const tecs = document.querySelectorAll(`#zone_${z.id} .tecnico-item`);
+                const qtd = dadosChamados[z.id] || 0;
+                if(tecs.length > 0) {
+                    count++; t += `📍 *${z.nome}*${qtd > 0 ? ` [🚨 ${qtd} Abertos]` : ''}\n`;
+                    tecs.forEach(i => t += `👷 ${i.innerText}\n`); t += `\n`;
+                }
+            });
+            const out = document.getElementById('output'); out.value = t; out.select();
+            try { navigator.clipboard.writeText(t); alert("Copiado!"); } catch(e){}
+        }
+    </script>
+</body>
+</html>
